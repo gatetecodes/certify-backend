@@ -1,0 +1,47 @@
+package com.irembo.certify.certificate;
+
+import com.irembo.certify.certificate.dto.CertificateResponse;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/public/verify")
+public class VerificationController {
+
+    private final CertificateVerificationTokenRepository tokenRepository;
+    private final CertificateService certificateService;
+
+    public VerificationController(
+            CertificateVerificationTokenRepository tokenRepository,
+            CertificateService certificateService
+    ) {
+        this.tokenRepository = tokenRepository;
+        this.certificateService = certificateService;
+    }
+
+    @GetMapping("/{publicId}")
+    public ResponseEntity<?> verify(@PathVariable UUID publicId) {
+        var token = tokenRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new NoSuchElementException("Certificate token not found"));
+
+        CertificateResponse certificate = certificateService.getById(token.getCertificateId());
+
+        boolean hashMatches = certificate.hash().equals(token.getChecksum());
+        boolean valid = hashMatches && certificate.status() == CertificateStatus.GENERATED;
+
+        return ResponseEntity.ok(Map.of(
+                "valid", valid,
+                "reason", valid ? "OK" : "HASH_MISMATCH_OR_REVOKED",
+                "certificateId", certificate.id(),
+                "templateId", certificate.templateId(),
+                "issuedAt", certificate.createdAt()
+        ));
+    }
+}
