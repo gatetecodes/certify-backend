@@ -31,7 +31,7 @@ public class CertificateController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('TENANT_ADMIN','TENANT_USER')")
-    public CertificateResponse getCertificate(@PathVariable UUID id) {
+    public CertificateResponse getCertificate(@PathVariable("id") UUID id) {
         return certificateService.getForCurrentTenant(id);
     }
 
@@ -57,7 +57,7 @@ public class CertificateController {
 
     @GetMapping("/{id}/download")
     @PreAuthorize("hasAnyRole('TENANT_ADMIN','TENANT_USER')")
-    public ResponseEntity<byte[]> download(@PathVariable UUID id) {
+    public ResponseEntity<byte[]> download(@PathVariable("id") UUID id) {
         byte[] pdf = certificateService.downloadForCurrentTenant(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=certificate-" + id + ".pdf")

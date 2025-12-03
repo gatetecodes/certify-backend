@@ -37,4 +37,4 @@ certify:
       secret: ${JWT_SECRET:}
       expiration-minutes: 60
   verification:
-    base-url: ${CERTIFY_VERIFICATION_BASE_URL:http://localhost:8080/public/verify}
+    base-url: ${CERTIFY_VERIFICATION_BASE_URL:http://localhost:4200/verify}

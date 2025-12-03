@@ -89,6 +89,7 @@ public class CertificateService {
         UUID dummyPublicId = UUID.randomUUID();
         String verificationUrl = verificationBaseUrl + "/" + dummyPublicId;
         String qrDataUrl = qrCodeService.generateDataUrl(verificationUrl, 200);
+        data.put("verificationUrl", verificationUrl);
         data.putIfAbsent("qrCodeImage", qrDataUrl);
 
         String html = applyPlaceholders(template.getHtmlTemplate(), data);
@@ -122,6 +123,7 @@ public class CertificateService {
 
         String verificationUrl = verificationBaseUrl + "/" + token.getPublicId();
         String qrDataUrl = qrCodeService.generateDataUrl(verificationUrl, 200);
+        data.put("verificationUrl", verificationUrl);
         data.putIfAbsent("qrCodeImage", qrDataUrl);
 
         String html = applyPlaceholders(template.getHtmlTemplate(), data);

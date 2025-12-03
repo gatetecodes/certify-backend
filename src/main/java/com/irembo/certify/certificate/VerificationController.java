@@ -27,7 +27,7 @@ public class VerificationController {
     }
 
     @GetMapping("/{publicId}")
-    public ResponseEntity<?> verify(@PathVariable UUID publicId) {
+    public ResponseEntity<?> verify(@PathVariable("publicId") UUID publicId) {
         var token = tokenRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new NoSuchElementException("Certificate token not found"));
 
