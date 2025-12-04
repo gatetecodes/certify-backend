@@ -9,18 +9,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -92,5 +92,28 @@ class TenantAdminServiceTest {
 
         assertThrows(IllegalArgumentException.class, () -> tenantAdminService.createTenant(request));
         verify(tenantRepository, never()).save(any());
+    }
+
+    @Test
+    void listTenantsHandlesMissingAdmin() {
+        Tenant tenant = new Tenant();
+        tenant.setId(UUID.randomUUID());
+        tenant.setName("No Admin Corp");
+        tenant.setSlug("no-admin-corp");
+        tenant.setCreatedAt(Instant.now());
+        tenant.setUpdatedAt(Instant.now());
+
+        when(tenantRepository.findAll(any(Sort.class))).thenReturn(java.util.List.of(tenant));
+        when(userRepository.findByTenantIdInAndRoleOrderByCreatedAtAsc(anyList(), eq(Role.TENANT_ADMIN)))
+                .thenReturn(List.of());
+
+        java.util.List<TenantSummaryResponse> responses = tenantAdminService.listTenants();
+
+        assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).admin()).isNotNull();
+        assertThat(responses.get(0).admin().fullName()).isEmpty();
+        assertThat(responses.get(0).admin().email()).isEmpty();
+
+        verify(userRepository, times(1)).findByTenantIdInAndRoleOrderByCreatedAtAsc(anyList(), eq(Role.TENANT_ADMIN));
     }
 }

@@ -14,7 +14,8 @@ import org.springframework.util.StringUtils;
 import java.text.Normalizer;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
 
 @Service
@@ -36,15 +37,42 @@ public class TenantAdminService {
 
     @Transactional(readOnly = true)
     public List<TenantSummaryResponse> listTenants() {
-        return tenantRepository.findAll(Sort.by(Sort.Direction.ASC, "createdAt")).stream()
+        List<Tenant> tenants = tenantRepository.findAll(Sort.by(Sort.Direction.ASC, "createdAt")).stream()
                 .filter(tenant -> !"platform".equals(tenant.getSlug()))
+                .toList();
+
+        if (tenants.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> tenantIds = tenants.stream()
+                .map(Tenant::getId)
+                .toList();
+
+        // Batch load all tenant admins in a single query to avoid N+1 lookups
+        List<User> admins = userRepository.findByTenantIdInAndRoleOrderByCreatedAtAsc(tenantIds, Role.TENANT_ADMIN);
+
+        Map<UUID, TenantSummaryResponse.TenantAdminContact> adminContactsByTenantId = new HashMap<>();
+        for (User admin : admins) {
+            // Because the result is ordered by createdAt asc, the first admin we see per tenant
+            // is the earliest one; keep the existing entry if already present.
+            adminContactsByTenantId.computeIfAbsent(
+                    admin.getTenantId(),
+                    id -> new TenantSummaryResponse.TenantAdminContact(admin.getFullName(), admin.getEmail())
+            );
+        }
+
+        return tenants.stream()
                 .map(tenant -> new TenantSummaryResponse(
                         tenant.getId(),
                         tenant.getName(),
                         tenant.getSlug(),
                         tenant.getCreatedAt(),
                         tenant.getUpdatedAt(),
-                        resolveAdminContact(tenant.getId())
+                        adminContactsByTenantId.getOrDefault(
+                                tenant.getId(),
+                                new TenantSummaryResponse.TenantAdminContact("", "")
+                        )
                 ))
                 .toList();
     }
@@ -87,13 +115,6 @@ public class TenantAdminService {
                 savedTenant.getUpdatedAt(),
                 contact
         );
-    }
-
-    private TenantSummaryResponse.TenantAdminContact resolveAdminContact(UUID tenantId) {
-        Optional<User> admin = userRepository.findFirstByTenantIdAndRoleOrderByCreatedAtAsc(tenantId, Role.TENANT_ADMIN);
-        return admin
-                .map(user -> new TenantSummaryResponse.TenantAdminContact(user.getFullName(), user.getEmail()))
-                .orElse(null);
     }
 
     private String determineSlug(String tenantName, String requestedSlug) {
