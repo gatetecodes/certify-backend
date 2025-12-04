@@ -49,7 +49,7 @@ class TenantAdminServiceTest {
                 null,
                 "Alice Admin",
                 "alice@example.com",
-                "passw0rd!"
+                "  passw0rd!  "
         );
 
         when(tenantRepository.existsBySlug("acme-corp")).thenReturn(false);
