@@ -96,12 +96,15 @@ public class TenantAdminService {
         tenant.setSlug(slug);
         Tenant savedTenant = tenantRepository.save(tenant);
 
+        String rawPassword = request.adminPassword();
+        String trimmedPassword = rawPassword == null ? null : rawPassword.trim();
+
         User admin = new User();
         admin.setTenantId(savedTenant.getId());
         admin.setFullName(request.adminFullName().trim());
         admin.setEmail(adminEmail);
         admin.setRole(Role.TENANT_ADMIN);
-        admin.setPasswordHash(passwordEncoder.encode(request.adminPassword()));
+        admin.setPasswordHash(passwordEncoder.encode(trimmedPassword));
         userRepository.save(admin);
 
         TenantSummaryResponse.TenantAdminContact contact =
