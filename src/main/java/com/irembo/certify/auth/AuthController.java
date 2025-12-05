@@ -54,8 +54,7 @@ public class AuthController {
     }
 
     /**
-     * Lightweight adapter to reuse JwtService which currently expects a User
-     * aggregate.
+     * Lightweight adapter to reuse JwtService
      */
     private com.irembo.certify.user.User principalToUser(CustomUserDetails principal) {
         com.irembo.certify.user.User user = new com.irembo.certify.user.User();

@@ -28,6 +28,7 @@ public class CertificateService {
     private final CertificateRepository certificateRepository;
     private final CertificateVerificationTokenRepository tokenRepository;
     private final CertificateTemplateRepository templateRepository;
+    private final CertificateJobRepository jobRepository;
     private final ObjectMapper objectMapper;
     private final PdfRenderer pdfRenderer;
     private final FileSystemStorageService storageService;
@@ -38,6 +39,7 @@ public class CertificateService {
             CertificateRepository certificateRepository,
             CertificateVerificationTokenRepository tokenRepository,
             CertificateTemplateRepository templateRepository,
+            CertificateJobRepository jobRepository,
             ObjectMapper objectMapper,
             PdfRenderer pdfRenderer,
             FileSystemStorageService storageService,
@@ -47,6 +49,7 @@ public class CertificateService {
         this.certificateRepository = certificateRepository;
         this.tokenRepository = tokenRepository;
         this.templateRepository = templateRepository;
+        this.jobRepository = jobRepository;
         this.objectMapper = objectMapper;
         this.pdfRenderer = pdfRenderer;
         this.storageService = storageService;
@@ -78,6 +81,40 @@ public class CertificateService {
         return toResponse(certificate);
     }
 
+    /*
+     * Revoke a certificate for the current tenant.
+     * @param id The id of the certificate to revoke.
+     * @param reason The reason for revoking the certificate.
+     * @return The revoked certificate.
+     */
+
+    public CertificateResponse revokeForCurrentTenant(UUID id, String reason) {
+        UUID tenantId = requireTenant();
+        Certificate certificate = certificateRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new NoSuchElementException("Certificate not found"));
+
+        if (certificate.getStatus() == CertificateStatus.REVOKED) {
+            // Idempotent behaviour – already revoked, just return current representation.
+            return toResponse(certificate);
+        }
+
+        Map<String, Object> data = readDataJson(certificate.getDataJson());
+        if (reason != null && !reason.isBlank()) {
+            data.put("revocationReason", reason.trim());
+        }
+
+        certificate.setStatus(CertificateStatus.REVOKED);
+        certificate.setDataJson(writeDataJson(data));
+
+        return toResponse(certificate);
+    }
+
+    /*
+     * Simulate a certificate generation.
+     * @param request The request containing the template id and data.
+     * @return The simulated PDF bytes.
+     */
+
     public byte[] simulate(CertificateGenerateRequest request) {
         UUID tenantId = requireTenant();
         CertificateTemplate template = templateRepository
@@ -98,11 +135,76 @@ public class CertificateService {
 
     public CertificateResponse generate(CertificateGenerateRequest request, String createdByEmail) {
         UUID tenantId = requireTenant();
-        CertificateTemplate template = templateRepository
-                .findByIdAndTenantId(request.templateId(), tenantId)
-                .orElseThrow(() -> new NoSuchElementException("Template not found"));
-
         Map<String, Object> data = new LinkedHashMap<>(request.data());
+        return generateInternal(tenantId, request.templateId(), data, createdByEmail);
+    }
+
+    public byte[] downloadForCurrentTenant(UUID id) {
+        UUID tenantId = requireTenant();
+        Certificate certificate = certificateRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new NoSuchElementException("Certificate not found"));
+        return storageService.load(certificate.getStoragePath());
+    }
+
+    public CertificateJob submitAsyncJob(CertificateGenerateRequest request, String requestedByEmail) {
+        UUID tenantId = requireTenant();
+        CertificateJob job = new CertificateJob();
+        job.setTenantId(tenantId);
+        job.setTemplateId(request.templateId());
+        job.setRequestedBy(requestedByEmail);
+        job.setStatus(CertificateJobStatus.PENDING);
+        job.setRequestDataJson(writeDataJson(new LinkedHashMap<>(request.data())));
+        return jobRepository.save(job);
+    }
+
+    public CertificateJob getJobForCurrentTenant(UUID id) {
+        UUID tenantId = requireTenant();
+        CertificateJob job = jobRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Job not found"));
+        if (!tenantId.equals(job.getTenantId())) {
+            throw new NoSuchElementException("Job not found");
+        }
+        return job;
+    }
+
+    public CertificateResponse processJob(CertificateJob job) {
+        Map<String, Object> data = readDataJson(job.getRequestDataJson());
+        return generateInternal(job.getTenantId(), job.getTemplateId(), new LinkedHashMap<>(data), job.getRequestedBy());
+    }
+
+    private CertificateResponse toResponse(Certificate certificate) {
+        UUID tenantId = certificate.getTenantId();
+        Map<String, Object> data = readDataJson(certificate.getDataJson());
+
+        UUID publicId = tokenRepository.findByCertificateId(certificate.getId())
+                .map(CertificateVerificationToken::getPublicId)
+                .orElse(null);
+        String verificationUrl = publicId != null ? verificationBaseUrl + "/" + publicId : null;
+
+        return new CertificateResponse(
+                certificate.getId(),
+                certificate.getTemplateId(),
+                tenantId,
+                certificate.getStatus(),
+                certificate.getStoragePath(),
+                certificate.getHash(),
+                certificate.getCreatedBy(),
+                certificate.getCreatedAt(),
+                data,
+                publicId,
+                verificationUrl
+        );
+    }
+
+    private CertificateResponse generateInternal(
+            UUID tenantId,
+            UUID templateId,
+            Map<String, Object> data,
+            String createdByEmail
+    ) {
+        CertificateTemplate template = templateRepository
+                .findByIdAndTenantId(templateId, tenantId)
+                .orElseThrow(() -> new NoSuchElementException("Template not found"));
 
         Certificate certificate = new Certificate();
         certificate.setTenantId(tenantId);
@@ -139,37 +241,6 @@ public class CertificateService {
         token.setChecksum(hash);
 
         return toResponse(certificate);
-    }
-
-    public byte[] downloadForCurrentTenant(UUID id) {
-        UUID tenantId = requireTenant();
-        Certificate certificate = certificateRepository.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new NoSuchElementException("Certificate not found"));
-        return storageService.load(certificate.getStoragePath());
-    }
-
-    private CertificateResponse toResponse(Certificate certificate) {
-        UUID tenantId = certificate.getTenantId();
-        Map<String, Object> data = readDataJson(certificate.getDataJson());
-
-        UUID publicId = tokenRepository.findByCertificateId(certificate.getId())
-                .map(CertificateVerificationToken::getPublicId)
-                .orElse(null);
-        String verificationUrl = publicId != null ? verificationBaseUrl + "/" + publicId : null;
-
-        return new CertificateResponse(
-                certificate.getId(),
-                certificate.getTemplateId(),
-                tenantId,
-                certificate.getStatus(),
-                certificate.getStoragePath(),
-                certificate.getHash(),
-                certificate.getCreatedBy(),
-                certificate.getCreatedAt(),
-                data,
-                publicId,
-                verificationUrl
-        );
     }
 
     private Map<String, Object> readDataJson(String json) {
