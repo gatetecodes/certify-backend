@@ -5,9 +5,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 public class CertificateJobProcessor {
@@ -30,24 +32,41 @@ public class CertificateJobProcessor {
      */
     @Scheduled(fixedDelayString = "${certify.jobs.poll-interval:1000}")
     public void pollAndProcessJobs() {
-        List<CertificateJob> jobs = jobRepository.findTop50ByStatusOrderByCreatedAtAsc(CertificateJobStatus.PENDING);
-        for (CertificateJob job : jobs) {
+        List<UUID> claimedJobIds = claimNextBatch(50);
+        for (UUID jobId : claimedJobIds) {
             try {
-                processSingleJob(job.getId());
+                processSingleJob(jobId);
             } catch (Exception ex) {
-                log.error("Failed to process certificate job id={}", job.getId(), ex);
+                log.error("Failed to process certificate job id={}", jobId, ex);
             }
         }
     }
 
-    @org.springframework.transaction.annotation.Transactional
-    public void processSingleJob(UUID jobId) {
-        CertificateJob job = jobRepository.findById(jobId).orElse(null);
-        if (job == null || job.getStatus() != CertificateJobStatus.PENDING) {
-            return;
+    /**
+     * Claims the next batch of PENDING jobs by locking and updating them to PROCESSING
+     */
+    @Transactional
+    protected List<UUID> claimNextBatch(int limit) {
+        List<CertificateJob> jobs = jobRepository.findNextBatchForUpdate(
+                CertificateJobStatus.PENDING.name(),
+                limit
+        );
+
+        for (CertificateJob job : jobs) {
+            job.setStatus(CertificateJobStatus.PROCESSING);
         }
 
-        job.setStatus(CertificateJobStatus.PROCESSING);
+        return jobs.stream()
+                .map(CertificateJob::getId)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void processSingleJob(UUID jobId) {
+        CertificateJob job = jobRepository.findById(jobId).orElse(null);
+        if (job == null || job.getStatus() != CertificateJobStatus.PROCESSING) {
+            return;
+        }
 
         try {
             TenantContextHolder.setTenantId(job.getTenantId());

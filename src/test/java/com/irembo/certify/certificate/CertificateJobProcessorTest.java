@@ -35,7 +35,7 @@ class CertificateJobProcessorTest {
         job.setId(jobId);
         job.setTenantId(tenantId);
         job.setTemplateId(templateId);
-        job.setStatus(CertificateJobStatus.PENDING);
+        job.setStatus(CertificateJobStatus.PROCESSING);
         job.setRequestDataJson("{}");
         job.setRequestedBy("user@example.com");
 
@@ -74,7 +74,7 @@ class CertificateJobProcessorTest {
         job.setId(jobId);
         job.setTenantId(tenantId);
         job.setTemplateId(templateId);
-        job.setStatus(CertificateJobStatus.PENDING);
+        job.setStatus(CertificateJobStatus.PROCESSING);
         job.setRequestDataJson("{}");
         job.setRequestedBy("user@example.com");
 

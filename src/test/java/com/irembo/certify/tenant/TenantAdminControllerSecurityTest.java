@@ -11,6 +11,6 @@ class TenantAdminControllerSecurityTest {
     void tenantAdminControllerIsRestrictedToSystemAdminRole() {
         PreAuthorize preAuthorize = TenantAdminController.class.getAnnotation(PreAuthorize.class);
         assertThat(preAuthorize).isNotNull();
-        assertThat(preAuthorize.value()).contains("hasRole('SYSTEM_ADMIN')");
+        assertThat(preAuthorize.value()).isEqualTo("hasRole('SYSTEM_ADMIN')");
     }
 }
