@@ -34,11 +34,23 @@ public class VerificationController {
         CertificateResponse certificate = certificateService.getById(token.getCertificateId());
 
         boolean hashMatches = certificate.hash().equals(token.getChecksum());
-        boolean valid = hashMatches && certificate.status() == CertificateStatus.GENERATED;
+
+        String reason;
+        if (!hashMatches) {
+            reason = "HASH_MISMATCH";
+        } else if (certificate.status() == CertificateStatus.REVOKED) {
+            reason = "REVOKED";
+        } else if (certificate.status() != CertificateStatus.GENERATED) {
+            reason = "INVALID_STATUS";
+        } else {
+            reason = "OK";
+        }
+
+        boolean valid = "OK".equals(reason);
 
         return ResponseEntity.ok(Map.of(
                 "valid", valid,
-                "reason", valid ? "OK" : "HASH_MISMATCH_OR_REVOKED",
+                "reason", reason,
                 "certificateId", certificate.id(),
                 "templateId", certificate.templateId(),
                 "issuedAt", certificate.createdAt()
