@@ -51,3 +51,6 @@ bin/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Generated certificate storage
+storage/
