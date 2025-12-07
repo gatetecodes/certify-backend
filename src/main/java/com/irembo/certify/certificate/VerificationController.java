@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.UUID;
 
 @RestController
@@ -28,12 +27,14 @@ public class VerificationController {
 
     @GetMapping("/{publicId}")
     public ResponseEntity<?> verify(@PathVariable("publicId") UUID publicId) {
-        var token = tokenRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new NoSuchElementException("Certificate token not found"));
+        var token = tokenRepository.findByPublicId(publicId);
+        if (token.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
 
-        CertificateResponse certificate = certificateService.getById(token.getCertificateId());
+        CertificateResponse certificate = certificateService.getById(token.get().getCertificateId());
 
-        boolean hashMatches = certificate.hash().equals(token.getChecksum());
+        boolean hashMatches = certificate.hash().equals(token.get().getChecksum());
 
         String reason;
         if (!hashMatches) {
